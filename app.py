@@ -1,7 +1,6 @@
 import streamlit as st
 import os
 import time
-import json
 import pandas as pd
 from model import ASRModel
 from qwen_llm import (
@@ -72,23 +71,66 @@ def get_asr_model():
             return None, None, str(e)
     return asr_model, asr_model.device, None
 
+def clear_results():
+    if 'transcribed_text' in st.session_state:
+        del st.session_state.transcribed_text
+    if 'asr_stats' in st.session_state:
+        del st.session_state.asr_stats
+    st.rerun()
+
+def process_audio(uploaded_file):
+    """处理音频文件"""
+    try:
+        model, device, err = get_asr_model()
+        if err:
+            st.error(f"❌ ASR模型加载失败: {err}")
+            return
+        if not model:
+            st.error("ASR模型未加载")
+            return
+        temp_dir = "temp_uploads"
+        os.makedirs(temp_dir, exist_ok=True)
+        audio_path = os.path.join(temp_dir, uploaded_file.name)
+        with open(audio_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        status_text.text("🎵 正在转写音频...")
+        progress_bar.progress(25)
+        start_time = time.time()
+        transcribed_text = model.transcribe(audio_path)
+        progress_bar.progress(100)
+        status_text.text("✅ 转写完成!")
+        processing_time = time.time() - start_time
+        st.session_state.transcribed_text = transcribed_text
+        st.session_state.asr_stats = {
+            'time': processing_time,
+            'text_length': len(transcribed_text),
+            'file_name': uploaded_file.name
+        }
+        st.success(f"🎉 转写完成！耗时 {processing_time:.2f} 秒")
+        if uploaded_file and os.path.exists(audio_path):
+            os.remove(audio_path)
+        try:
+            st.rerun()
+        except Exception:
+            pass
+    except Exception as e:
+        st.error(f"❌ 转写失败: {str(e)}")
+        st.exception(e)
+
 def asr_tab():
     """ASR音频转写功能"""
     st.markdown('<h2 class="main-header">🎤 音频转写 (ASR)</h2>', unsafe_allow_html=True)
     model, device, err = get_asr_model()
-    # 只在首次加载成功时弹出toast
     if err:
         st.error(f"❌ ASR模型加载失败: {err}")
         return
     if not model:
         st.info("🔄 正在初始化ASR模型，请稍候...")
         return
-    # 只弹一次toast
     if not st.session_state.get("asr_model_loaded_toast", False):
-        if hasattr(st, "toast"):
-            st.toast(f"✅ ASR模型加载成功！使用设备: {device}", icon="✅")
-        else:
-            st.success(f"✅ ASR模型加载成功！使用设备: {device}")
+        st.success(f"✅ ASR模型加载成功！使用设备: {device}")
         st.session_state["asr_model_loaded_toast"] = True
     
     # 侧边栏配置
@@ -152,91 +194,6 @@ def asr_tab():
                     clear_results()
         else:
             st.info("👆 请先上传音频文件并开始转写")
-
-def process_audio(uploaded_file):
-    """处理音频文件"""
-    try:
-        model, device, err = get_asr_model()
-        if err:
-            st.error(f"❌ ASR模型加载失败: {err}")
-            return
-        if not model:
-            st.error("ASR模型未加载")
-            return
-        # 确定音频文件路径
-        audio_path = None
-        if uploaded_file:
-            temp_dir = "temp_uploads"
-            os.makedirs(temp_dir, exist_ok=True)
-            audio_path = os.path.join(temp_dir, uploaded_file.name)
-            with open(audio_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-        else:
-            st.error("无效的音频文件路径")
-            return
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        status_text.text("🎵 正在转写音频...")
-        progress_bar.progress(25)
-        start_time = time.time()
-        # 使用新模型接口
-        transcribed_text = model.transcribe(audio_path)
-        progress_bar.progress(100)
-        status_text.text("✅ 转写完成!")
-        processing_time = time.time() - start_time
-        st.session_state.transcribed_text = transcribed_text
-        st.session_state.asr_stats = {
-            'time': processing_time,
-            'text_length': len(transcribed_text),
-            'file_name': uploaded_file.name
-        }
-        st.success(f"🎉 转写完成！耗时 {processing_time:.2f} 秒")
-        if uploaded_file and os.path.exists(audio_path):
-            os.remove(audio_path)
-        try:
-            st.rerun()
-        except AttributeError:
-            try:
-                st.experimental_rerun()
-            except AttributeError:
-                pass
-    except Exception as e:
-        st.error(f"❌ 转写失败: {str(e)}")
-        st.exception(e)
-
-def save_transcription_result(text):
-    """保存转写结果"""
-    try:
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        filename = f"transcription_{timestamp}.txt"
-        
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(text)
-        
-        st.success(f"✅ 结果已保存到: {filename}")
-        
-        # 同时保存JSON格式
-        json_filename = f"transcription_{timestamp}.json"
-        result_data = {
-            "timestamp": timestamp,
-            "text": text,
-            "text_length": len(text),
-            "stats": st.session_state.get('asr_stats', {})
-        }
-        
-        with open(json_filename, "w", encoding="utf-8") as f:
-            json.dump(result_data, f, ensure_ascii=False, indent=2)
-            
-    except Exception as e:
-        st.error(f"保存失败: {e}")
-
-def clear_results():
-    """清空结果"""
-    if 'transcribed_text' in st.session_state:
-        del st.session_state.transcribed_text
-    if 'asr_stats' in st.session_state:
-        del st.session_state.asr_stats
-    st.rerun()
 
 def qa_split_tab():
     """问答对拆分功能"""
