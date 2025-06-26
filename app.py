@@ -120,11 +120,6 @@ def asr_tab():
         st.info(f"设备: {'GPU' if 'cuda' in device else 'CPU'}")
         st.info("模型: SenseVoiceSmall")
         
-        # 参数配置
-        st.markdown("### ⚙️ 参数配置")
-        batch_size = st.slider("批处理大小", min_value=60, max_value=200, value=120, step=20)
-        merge_length = st.slider("合并长度(秒)", min_value=10, max_value=60, value=30, step=5)
-        
         st.markdown("---")
         st.markdown("### 📊 处理统计")
         # 统计每次都从 session_state 读取，保证自动刷新
@@ -149,7 +144,7 @@ def asr_tab():
         st.markdown("---")
         if st.button("🚀 开始转写", type="primary", use_container_width=True):
             if uploaded_file:
-                process_audio(uploaded_file, batch_size, merge_length)
+                process_audio(uploaded_file)
             else:
                 st.warning("请上传音频文件")
     
@@ -178,7 +173,7 @@ def asr_tab():
         else:
             st.info("👆 请先上传音频文件并开始转写")
 
-def process_audio(uploaded_file, batch_size, merge_length):
+def process_audio(uploaded_file):
     """处理音频文件"""
     try:
         model, device, err = get_asr_model()
@@ -217,9 +212,9 @@ def process_audio(uploaded_file, batch_size, merge_length):
             cache={},
             language="auto",
             use_itn=True,
-            batch_size_s=batch_size,
+            batch_size_s=120, # 使用固定的默认值
             merge_vad=True,
-            merge_length_s=merge_length,
+            merge_length_s=30, # 使用固定的默认值
         )
         
         progress_bar.progress(75)
