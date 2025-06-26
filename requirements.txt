@@ -1,0 +1,6 @@
+streamlit
+funasr
+torch
+torchaudio
+langchain-openai
+langchain 

@@ -4,7 +4,8 @@ import time
 import json
 from funasr import AutoModel
 from funasr.utils.postprocess_utils import rich_transcription_postprocess
-from qwen_llm import process_text_with_qwen, extract_qa_pairs_from_llm_result, split_text_to_qa_pairs
+from qwen_llm import process_text_with_qwen
+
 
 # 页面配置
 st.set_page_config(
@@ -149,29 +150,16 @@ def asr_tab():
     
     with col2:
         st.subheader("📝 转写结果")
-        
-        # 显示转写结果
         if 'transcribed_text' in st.session_state:
             text = st.session_state.transcribed_text
-            
-            # 文本显示
             st.text_area(
                 "转写文本",
                 value=text,
                 height=400,
-                help="转写结果将显示在这里"
+                help="转写结果将显示在这里，如果文本过长可以滚动查看。"
             )
-            
-            # 操作按钮
-            col_btn1, col_btn2, col_btn3 = st.columns(3)
-            
+            col_btn1, col_btn2 = st.columns(2)
             with col_btn1:
-                if st.button("📋 复制文本", use_container_width=True):
-                    st.write("文本已复制到剪贴板")
-                    st.session_state['copied'] = True
-            
-            with col_btn2:
-                # 下载为txt
                 st.download_button(
                     label="💾 下载为TXT",
                     data=text,
@@ -179,16 +167,9 @@ def asr_tab():
                     mime="text/plain",
                     use_container_width=True
                 )
-            
-            with col_btn3:
+            with col_btn2:
                 if st.button("🔄 清空结果", use_container_width=True):
                     clear_results()
-            
-            # 显示复制成功消息
-            if st.session_state.get('copied', False):
-                st.success("✅ 文本已复制到剪贴板")
-                st.session_state['copied'] = False
-        
         else:
             st.info("👆 请先上传音频文件并开始转写")
 
