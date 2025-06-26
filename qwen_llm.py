@@ -18,26 +18,17 @@ llm = ChatOpenAI(
 )
 
 # 优化的问答对提取Prompt
-QA_EXTRACTION_PROMPT = """你是一个专业的文档问答对提取专家。你的任务是从给定的文本中准确提取问答对。
+QA_EXTRACTION_PROMPT = """
+你是一名公安执法AI助手，擅长处理执法办案笔录。你的任务是从一段完整的案件笔录中，
+提取出一组组连续的“问答对”，每一组都由“民警提问”和“嫌疑人回答”构成。
 
-## 任务说明
-- 识别文本中的问答结构，通常以"问"开头，"答"开头
-- 正确区分真正的问答对和文本中可能包含的"问"、"答"字眼
-- 确保每个问答对都是完整且有意义的
-- 保持原始文本的准确性和完整性
-
-## 提取规则
-1. 问答对必须以"问"开头，以"答"开头
-2. 问题部分从"问"字后开始，到下一个"答"字前结束
-3. 答案部分从"答"字后开始，到下一个"问"字前结束（如果有的话）
-4. 如果答案中包含"问"字，不要将其误认为新的问题开始
-5. 去除问答对前后的标点符号和多余空格
-
-## 输出格式
-请按照以下格式输出问答对：
-问：[问题内容]
-答：[答案内容]
-
+请严格遵循以下规范：
+1. 不要修改原文中的任何字、标点或顺序。
+2. 拆分时，仅基于语言逻辑与语义结构来判断“问”与“答”的边界。
+3. 对回答中出现的“问”字（如“你刚才问我…”）不要误判为新问题。
+4. 输出格式如下（纯文本即可）：
+【问】：（原文中的完整问题）
+【答】：（对应的完整回答）
 ---
 
 ## 示例1
@@ -71,6 +62,53 @@ PROMPT_TEMPLATES = {
     "summary": "请对以下文本进行简要总结：\n{text}",
     "keywords": "请提取以下文本的关键词：\n{text}",
 }
+
+def get_qa_pairs_from_text_stream(text: str, custom_prompt: str = None):
+    """
+    从文本中提取问答对的主函数（流式版本）。
+
+    :param text: 待处理的原始文本。
+    :param custom_prompt: 用户提供的可选自定义Prompt。如果为None，则使用默认的QA_EXTRACTION_PROMPT。
+    :return: 一个生成器，持续产生LLM的输出块。
+    """
+    prompt_template_str = custom_prompt if custom_prompt else QA_EXTRACTION_PROMPT
+
+    # 1. 构建Prompt
+    prompt = PromptTemplate(
+        input_variables=["text"],
+        template=prompt_template_str
+    )
+    
+    # 2. 创建并调用LLM链的流式接口
+    chain = prompt | llm
+    
+    # 3. 返回生成器
+    return chain.stream({"text": text})
+
+def get_qa_pairs_from_text(text: str, custom_prompt: str = None) -> list:
+    """
+    从文本中提取问答对的主函数。
+
+    :param text: 待处理的原始文本。
+    :param custom_prompt: 用户提供的可选自定义Prompt。如果为None，则使用默认的QA_EXTRACTION_PROMPT。
+    :return: 一个包含问答对字典的列表，例如 [{'问': '...', '答': '...'}, ...]。
+    """
+    prompt_template_str = custom_prompt if custom_prompt else QA_EXTRACTION_PROMPT
+
+    # 1. 构建Prompt
+    prompt = PromptTemplate(
+        input_variables=["text"],
+        template=prompt_template_str
+    )
+    
+    # 2. 创建并调用LLM链
+    chain = prompt | llm
+    llm_result_content = chain.invoke({"text": text}).content
+    
+    # 3. 解析结果
+    qa_pairs = extract_qa_pairs_from_llm_result(llm_result_content)
+    
+    return qa_pairs, llm_result_content
 
 def process_text_with_qwen(text, prompt_type="qa"):
     """

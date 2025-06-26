@@ -4,7 +4,11 @@ import time
 import json
 from funasr import AutoModel
 from funasr.utils.postprocess_utils import rich_transcription_postprocess
-from qwen_llm import process_text_with_qwen
+from qwen_llm import (
+    get_qa_pairs_from_text_stream,
+    extract_qa_pairs_from_llm_result,
+    QA_EXTRACTION_PROMPT # Still need this for the default value in sidebar
+)
 
 
 # 页面配置
@@ -293,7 +297,91 @@ def clear_results():
 def qa_split_tab():
     """问答对拆分功能"""
     st.markdown('<h2 class="main-header">✂️ 问答对拆分</h2>', unsafe_allow_html=True)
-    st.info("🔧 此功能正在开发中...")
+
+    # 侧边栏配置
+    with st.sidebar:
+        st.header("⚙️ 问答拆分配置")
+        custom_prompt = st.text_area(
+            "问答提取Prompt",
+            value=QA_EXTRACTION_PROMPT,
+            height=300,
+            help="你可以修改此Prompt来优化提取效果"
+        )
+        st.markdown("---")
+        st.markdown("### 📊 拆分统计")
+        if 'qa_pairs' in st.session_state:
+            stats = st.session_state.get('qa_pairs', [])
+            st.metric("问答对数量", len(stats))
+    
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        st.subheader("📝 原始文本")
+        # 让文本框可编辑，不再依赖ASR页面的结果
+        raw_text_placeholder = "请在此处粘贴或输入需要处理的文本..."
+        raw_text = st.text_area(
+            "待处理文本",
+            value=st.session_state.get("qa_input_text", raw_text_placeholder),
+            height=400,
+            key="qa_input_text"
+        )
+
+        if st.button("🚀 开始提取", use_container_width=True, type="primary"):
+            if raw_text == raw_text_placeholder or not raw_text.strip():
+                st.warning("请输入要分析的文本。")
+            else:
+                # 清空之前的结果
+                if 'qa_pairs' in st.session_state:
+                    del st.session_state['qa_pairs']
+                if 'raw_llm_output' in st.session_state:
+                    del st.session_state['raw_llm_output']
+
+                with st.spinner("🤖 正在调用Qwen大模型进行问答拆分..."):
+                    try:
+                        # 使用当前文本框内的内容进行流式处理
+                        response_stream = get_qa_pairs_from_text_stream(raw_text, custom_prompt)
+                        
+                        # 在col2中显示流式输出
+                        with col2:
+                            st.subheader("🤖 问答对提取结果")
+                            placeholder = st.empty()
+                            full_response = placeholder.write_stream(response_stream)
+                        
+                        # 流结束后，解析完整内容并保存
+                        qa_pairs = extract_qa_pairs_from_llm_result(full_response)
+                        st.session_state.qa_pairs = qa_pairs
+                        st.session_state.raw_llm_output = full_response
+                        
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ 问答拆分失败: {e}")
+
+    with col2:
+        if 'qa_pairs' not in st.session_state:
+             st.subheader("🤖 问答对提取结果")
+             st.info("👆 在左侧输入文本，然后点击“开始提取”。")
+        else:
+            st.subheader("✅ 提取结果")
+            qa_pairs = st.session_state.qa_pairs
+            
+            if not qa_pairs:
+                st.warning("未能从文本中提取出任何问答对。")
+                if 'raw_llm_output' in st.session_state:
+                    with st.expander("查看LLM原始输出"):
+                        st.text(st.session_state.raw_llm_output)
+            else:
+                formatted_text = ""
+                for pair in qa_pairs:
+                    question = pair.get("问", "未知问题")
+                    answer = pair.get("答", "未知回答")
+                    formatted_text += f'问：{question}\\n'
+                    formatted_text += f'答：{answer}\\n\\n'
+                
+                st.text_area(
+                    "问答对",
+                    value=formatted_text.strip(),
+                    height=300
+                )
 
 def qa_smooth_tab():
     """问答对平顺功能"""
@@ -308,10 +396,8 @@ def structured_output_tab():
 def main():
     """主函数"""
     st.markdown('<h1 class="main-header">🎤 音频文本处理系统</h1>', unsafe_allow_html=True)
-    # 应用启动时初始化模型
     get_asr_model()
     
-    # 创建标签页
     tab1, tab2, tab3, tab4 = st.tabs([
         "🎤 ASR转写", 
         "✂️ 问答拆分", 
@@ -319,7 +405,6 @@ def main():
         "📊 结构化输出"
     ])
     
-    # 标签页内容
     with tab1:
         asr_tab()
     
