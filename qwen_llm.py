@@ -14,9 +14,9 @@ if not QWEN_API_KEY:
     raise ValueError("请设置环境变量 DASHSCOPE_API_KEY，获取你的Qwen大模型API密钥。")
 
 llm = ChatOpenAI(
-    openai_api_key=QWEN_API_KEY,
+    openai_api_key="S",
     openai_api_base=QWEN_API_BASE,
-    model=QWEN_MODEL
+    model="qwen3-14B"
 )
 
 # 优化的问答对提取Prompt
@@ -129,26 +129,41 @@ def process_text_with_qwen(text, prompt_type="qa"):
     chain = prompt | llm
     return chain.invoke({"text": text}).content
 
+def remove_think_blocks(text):
+    """
+    Remove all <think>...</think> blocks, including multiline and whitespace.
+    """
+    import re
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+
+def clean_blank_lines(text):
+    """
+    Remove extra blank lines and leading/trailing whitespace from each line.
+    """
+    lines = [line.strip() for line in text.splitlines()]
+    return "\n".join([line for line in lines if line])
+
 def extract_qa_pairs_from_llm_result(llm_result):
     """
-    从LLM的输出结果中解析问答对
+    从LLM的输出结果中解析问答对，先去除<think>块和多余空行。
     """
     qa_pairs = []
-    
-    # 使用正则表达式匹配"问：...答：..."格式，修正以支持多行
-    pattern = r'问：(.*?)\n答：(.*?)(?=\n问：|$)'
-    matches = re.findall(pattern, llm_result, re.DOTALL)
-    
+    # 1. 去除<think>...</think>
+    text = remove_think_blocks(llm_result)
+    # 2. 去除多余空行和首尾空格
+    text = clean_blank_lines(text)
+    # 3. 使用正则表达式匹配"问：...答：..."格式，修正以支持多行
+    import re
+    pattern = r'问[:：](.*?)\n答[:：](.*?)(?=\n问[:：]|$)'
+    matches = re.findall(pattern, text, re.DOTALL)
     for question, answer in matches:
         question = question.strip()
         answer = answer.strip()
-        
         if question and answer:
             qa_pairs.append({
                 '问': question,
                 '答': answer
             })
-    
     return qa_pairs
 
 def split_text_to_qa_pairs(text):

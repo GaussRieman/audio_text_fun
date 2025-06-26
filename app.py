@@ -98,7 +98,7 @@ def process_audio(uploaded_file):
         status_text.text("🎵 正在转写音频...")
         progress_bar.progress(25)
         start_time = time.time()
-        transcribed_text = model.transcribe(audio_path)
+        transcribed_text = model.transcribe(audio_path, hotword=None)
         progress_bar.progress(100)
         status_text.text("✅ 转写完成!")
         processing_time = time.time() - start_time
