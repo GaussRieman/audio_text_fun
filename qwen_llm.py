@@ -2,6 +2,8 @@ from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
 import os
 import re
+import json
+import pandas as pd
 
 # 推荐将API Key和Base URL放在环境变量中
 QWEN_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
@@ -20,12 +22,12 @@ llm = ChatOpenAI(
 # 优化的问答对提取Prompt
 QA_EXTRACTION_PROMPT = """
 你是一名公安执法AI助手，擅长处理执法办案笔录。你的任务是从一段完整的案件笔录中，
-提取出一组组连续的“问答对”，每一组都由“民警提问”和“嫌疑人回答”构成。
+提取出一组组连续的"问答对"，每一组都由"民警提问"和"嫌疑人回答"构成。
 
 请严格遵循以下规范：
 1. 不要修改原文中的任何字、标点或顺序。
-2. 拆分时，仅基于语言逻辑与语义结构来判断“问”与“答”的边界。
-3. 对回答中出现的“问”字（如“你刚才问我…”）不要误判为新问题。
+2. 拆分时，仅基于语言逻辑与语义结构来判断"问"与"答"的边界。
+3. 对回答中出现的"问"字（如"你刚才问我..."）不要误判为新问题。
 4. 输出格式如下（纯文本即可）：
 【问】：（原文中的完整问题）
 【答】：（对应的完整回答）
@@ -133,8 +135,8 @@ def extract_qa_pairs_from_llm_result(llm_result):
     """
     qa_pairs = []
     
-    # 使用正则表达式匹配"问：...答：..."格式
-    pattern = r'问：([^\n]*?)\n答：([^\n]*?)(?=\n问：|$)'
+    # 使用正则表达式匹配"问：...答：..."格式，修正以支持多行
+    pattern = r'问：(.*?)\n答：(.*?)(?=\n问：|$)'
     matches = re.findall(pattern, llm_result, re.DOTALL)
     
     for question, answer in matches:
@@ -223,13 +225,31 @@ if __name__ == "__main__":
             print(llm_result)
             
             if args.type == "qa":
-                print("\n=== 解析后的问答对 ===\n")
                 qa_pairs = extract_qa_pairs_from_llm_result(llm_result)
-                for i, qa in enumerate(qa_pairs, 1):
-                    print(f"问答对 {i}:")
-                    print(f"问: {qa['问']}")
-                    print(f"答: {qa['答']}")
-                    print()
+                
+                # 1. 输出为文本格式
+                print("\n=== 格式化文本输出 ===\n")
+                text_output = ""
+                for pair in qa_pairs:
+                    text_output += f"问：{pair['问']}\n"
+                    text_output += f"答：{pair['答']}\n\n"
+                print(text_output)
+
+                # 2. 输出为DataFrame并保存为CSV
+                print("\n=== DataFrame 处理与CSV保存 ===\n")
+                if qa_pairs:
+                    df = pd.DataFrame(qa_pairs)
+                    # 为了更清晰的CSV列头，重命名列
+                    df.rename(columns={'问': '问题', '答': '回答'}, inplace=True)
+                    output_csv_path = "qa_output.csv"
+                    try:
+                        df.to_csv(output_csv_path, index=False, encoding='utf-8-sig')
+                        print(f"DataFrame已成功保存到: {output_csv_path}")
+                    except Exception as e:
+                        print(f"保存CSV文件时出错: {e}")
+                else:
+                    print("没有提取到问答对，无法生成CSV。")
+
         except Exception as e:
             print(f"处理出错: {e}")
             print("\n=== 使用本地函数作为备用 ===\n")

@@ -2,6 +2,7 @@ import streamlit as st
 import os
 import time
 import json
+import pandas as pd
 from funasr import AutoModel
 from funasr.utils.postprocess_utils import rich_transcription_postprocess
 from qwen_llm import (
@@ -359,7 +360,7 @@ def qa_split_tab():
     with col2:
         if 'qa_pairs' not in st.session_state:
              st.subheader("🤖 问答对提取结果")
-             st.info("👆 在左侧输入文本，然后点击“开始提取”。")
+             st.info("👆 在左侧输入文本，然后点击'开始提取'。")
         else:
             st.subheader("✅ 提取结果")
             qa_pairs = st.session_state.qa_pairs
@@ -368,19 +369,31 @@ def qa_split_tab():
                 st.warning("未能从文本中提取出任何问答对。")
                 if 'raw_llm_output' in st.session_state:
                     with st.expander("查看LLM原始输出"):
-                        st.text(st.session_state.raw_llm_output)
+                        st.code(st.session_state.raw_llm_output, language='json')
             else:
-                formatted_text = ""
-                for pair in qa_pairs:
-                    question = pair.get("问", "未知问题")
-                    answer = pair.get("答", "未知回答")
-                    formatted_text += f'问：{question}\\n'
-                    formatted_text += f'答：{answer}\\n\\n'
+                df = pd.DataFrame(qa_pairs)
                 
-                st.text_area(
-                    "问答对",
-                    value=formatted_text.strip(),
-                    height=300
+                st.dataframe(
+                    df, 
+                    use_container_width=True,
+                    column_config={
+                        "问题": st.column_config.TextColumn("问题", width="medium"),
+                        "回答": st.column_config.TextColumn("回答", width="large"),
+                    }
+                )
+
+                @st.cache_data
+                def convert_df_to_csv(df_to_convert):
+                    return df_to_convert.to_csv(index=False).encode('utf-8')
+
+                csv = convert_df_to_csv(df)
+
+                st.download_button(
+                    label="📥 下载为CSV文件",
+                    data=csv,
+                    file_name="qa_pairs.csv",
+                    mime="text/csv",
+                    use_container_width=True
                 )
 
 def qa_smooth_tab():
