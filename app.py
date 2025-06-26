@@ -3,12 +3,11 @@ import os
 import time
 import json
 import pandas as pd
-from funasr import AutoModel
-from funasr.utils.postprocess_utils import rich_transcription_postprocess
+from model import ASRModel
 from qwen_llm import (
     get_qa_pairs_from_text_stream,
     extract_qa_pairs_from_llm_result,
-    QA_EXTRACTION_PROMPT # Still need this for the default value in sidebar
+    QA_EXTRACTION_PROMPT
 )
 
 
@@ -61,36 +60,17 @@ st.markdown("""
 asr_model = None
 model_loaded = False
 
-# 初始化ASR模型
 @st.cache_resource
-def initialize_asr_model():
-    """初始化ASR模型（应用启动时调用）"""
-    import torch
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    try:
-        model = AutoModel(
-            model="iic/SenseVoiceSmall",
-            vad_model="fsmn-vad",
-            vad_kwargs={
-                "max_single_segment_time": 60000,
-                "min_single_segment_time": 1000,
-                "max_segment_length": 100000,
-            },
-            device=device,
-            disable_update=True,  # 禁止联网检查和下载
-        )
-        return model, device, None
-    except Exception as e:
-        return None, device, str(e)
-
 def get_asr_model():
-    """获取ASR模型实例"""
-    if 'asr_model' not in st.session_state:
-        model, device, err = initialize_asr_model()
-        st.session_state['asr_model'] = model
-        st.session_state['asr_device'] = device
-        st.session_state['asr_error'] = err
-    return st.session_state.get('asr_model'), st.session_state.get('asr_device'), st.session_state.get('asr_error')
+    global asr_model, model_loaded
+    if asr_model is None:
+        try:
+            asr_model = ASRModel()
+            model_loaded = True
+            return asr_model, asr_model.device, None
+        except Exception as e:
+            return None, None, str(e)
+    return asr_model, asr_model.device, None
 
 def asr_tab():
     """ASR音频转写功能"""
@@ -183,11 +163,9 @@ def process_audio(uploaded_file):
         if not model:
             st.error("ASR模型未加载")
             return
-        
         # 确定音频文件路径
         audio_path = None
         if uploaded_file:
-            # 保存上传的文件
             temp_dir = "temp_uploads"
             os.makedirs(temp_dir, exist_ok=True)
             audio_path = os.path.join(temp_dir, uploaded_file.name)
@@ -196,62 +174,32 @@ def process_audio(uploaded_file):
         else:
             st.error("无效的音频文件路径")
             return
-        
-        # 开始转写
         progress_bar = st.progress(0)
         status_text = st.empty()
-        
         status_text.text("🎵 正在转写音频...")
         progress_bar.progress(25)
-        
         start_time = time.time()
-        
-        # 执行转写
-        res = model.generate(
-            input=audio_path,
-            cache={},
-            language="auto",
-            use_itn=True,
-            batch_size_s=120, # 使用固定的默认值
-            merge_vad=True,
-            merge_length_s=30, # 使用固定的默认值
-        )
-        
-        progress_bar.progress(75)
-        status_text.text("📝 正在后处理文本...")
-        
-        # 后处理
-        transcribed_text = rich_transcription_postprocess(res[0]["text"])
-        
+        # 使用新模型接口
+        transcribed_text = model.transcribe(audio_path)
         progress_bar.progress(100)
         status_text.text("✅ 转写完成!")
-        
-        # 计算处理时间
         processing_time = time.time() - start_time
-        
-        # 保存结果到session state
         st.session_state.transcribed_text = transcribed_text
         st.session_state.asr_stats = {
             'time': processing_time,
             'text_length': len(transcribed_text),
             'file_name': uploaded_file.name
         }
-        
-        # 显示成功消息
         st.success(f"🎉 转写完成！耗时 {processing_time:.2f} 秒")
-        
-        # 清理临时文件
         if uploaded_file and os.path.exists(audio_path):
             os.remove(audio_path)
-        # 兼容新旧Streamlit的自动刷新
         try:
             st.rerun()
         except AttributeError:
             try:
                 st.experimental_rerun()
             except AttributeError:
-                pass  # 低版本不支持自动刷新
-        
+                pass
     except Exception as e:
         st.error(f"❌ 转写失败: {str(e)}")
         st.exception(e)
