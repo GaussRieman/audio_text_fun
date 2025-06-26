@@ -2,7 +2,7 @@ import streamlit as st
 import os
 import time
 import pandas as pd
-from model import ASRModel
+from model import ParaformerModel, SenseVoiceModel
 from qwen_llm import (
     get_qa_pairs_from_text_stream,
     extract_qa_pairs_from_llm_result,
@@ -64,7 +64,7 @@ def get_asr_model():
     global asr_model, model_loaded
     if asr_model is None:
         try:
-            asr_model = ASRModel()
+            asr_model = ParaformerModel()
             model_loaded = True
             return asr_model, asr_model.device, None
         except Exception as e:
