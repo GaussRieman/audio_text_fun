@@ -8,6 +8,7 @@ from qwen_llm import (
     extract_qa_pairs_from_llm_result,
     QA_EXTRACTION_PROMPT
 )
+import re
 
 
 # 页面配置
@@ -78,7 +79,7 @@ def clear_results():
         del st.session_state.asr_stats
     st.rerun()
 
-def process_audio(uploaded_file):
+def process_audio(uploaded_file, hotword=None):
     """处理音频文件"""
     try:
         model, device, err = get_asr_model()
@@ -98,7 +99,14 @@ def process_audio(uploaded_file):
         status_text.text("🎵 正在转写音频...")
         progress_bar.progress(25)
         start_time = time.time()
-        transcribed_text = model.transcribe(audio_path, hotword=None)
+        
+        # 处理热词参数 - 保持空格分隔格式
+        hotword_str = hotword.strip() if hotword else None
+        if hotword_str:
+            st.info(f"🔥 使用热词: {hotword_str}")
+            print(f"热词参数: {hotword_str}")
+        
+        transcribed_text = model.transcribe(audio_path, hotword=hotword_str)
         progress_bar.progress(100)
         status_text.text("✅ 转写完成!")
         processing_time = time.time() - start_time
@@ -106,7 +114,8 @@ def process_audio(uploaded_file):
         st.session_state.asr_stats = {
             'time': processing_time,
             'text_length': len(transcribed_text),
-            'file_name': uploaded_file.name
+            'file_name': uploaded_file.name,
+            'hotword_used': hotword_str
         }
         st.success(f"🎉 转写完成！耗时 {processing_time:.2f} 秒")
         if uploaded_file and os.path.exists(audio_path):
@@ -130,7 +139,6 @@ def asr_tab():
         st.info("🔄 正在初始化ASR模型，请稍候...")
         return
     if not st.session_state.get("asr_model_loaded_toast", False):
-        st.success(f"✅ ASR模型加载成功！使用设备: {device}")
         st.session_state["asr_model_loaded_toast"] = True
     
     # 侧边栏配置
@@ -142,12 +150,13 @@ def asr_tab():
         st.info(f"设备: {'GPU' if 'cuda' in device else 'CPU'}")
         st.info("模型: SenseVoiceSmall")
         
-        st.markdown("---")
-        st.markdown("### 📊 处理统计")
+        st.markdown("### 📊 ASR处理统计")
         # 统计每次都从 session_state 读取，保证自动刷新
         stats = st.session_state.get('asr_stats', {})
         st.metric("处理时间", f"{stats.get('time', 0):.2f}秒")
         st.metric("文本长度", f"{stats.get('text_length', 0)}字符")
+        if stats.get('hotword_used'):
+            st.info(f"🔥 热词: {stats.get('hotword_used')}")
     
     # 主要内容区域
     col1, col2 = st.columns([1, 1])
@@ -162,11 +171,19 @@ def asr_tab():
             help="支持多种音频格式，建议文件大小不超过100MB"
         )
         
+        # 新增热词输入框
+        hotword = st.text_input(
+            "热词（可选，多个词用空格分隔）",
+            value="",
+            help="可输入一组热词，提升特定词语识别准确率。多个词必须用空格分隔，如：词1 词2 词3"
+        )
+        
         # 处理按钮
         st.markdown("---")
         if st.button("🚀 开始转写", type="primary", use_container_width=True):
             if uploaded_file:
-                process_audio(uploaded_file)
+                # 传递热词参数
+                process_audio(uploaded_file, hotword)
             else:
                 st.warning("请上传音频文件")
     

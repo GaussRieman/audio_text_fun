@@ -10,8 +10,6 @@ QWEN_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
 QWEN_API_BASE = os.getenv("QWEN_API_BASE", "https://dashscope.aliyuncs.com/compatible-mode/v1")
 QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen-max")
 
-if not QWEN_API_KEY:
-    raise ValueError("请设置环境变量 DASHSCOPE_API_KEY，获取你的Qwen大模型API密钥。")
 
 llm = ChatOpenAI(
     openai_api_key="S",
@@ -29,8 +27,8 @@ QA_EXTRACTION_PROMPT = """
 2. 拆分时，仅基于语言逻辑与语义结构来判断"问"与"答"的边界。
 3. 对回答中出现的"问"字（如"你刚才问我..."）不要误判为新问题。
 4. 输出格式如下（纯文本即可）：
-【问】：（原文中的完整问题）
-【答】：（对应的完整回答）
+问：（原文中的完整问题）
+答：（对应的完整回答）
 ---
 
 ## 示例1
@@ -57,7 +55,7 @@ QA_EXTRACTION_PROMPT = """
 
 {text}
 
-请严格按照上述格式输出问答对："""
+请严格按照上述格式输出问答对：/no_think"""
 
 PROMPT_TEMPLATES = {
     "qa": QA_EXTRACTION_PROMPT,

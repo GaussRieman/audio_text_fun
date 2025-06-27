@@ -2,6 +2,7 @@ import os
 import torch
 from funasr import AutoModel
 from funasr.utils.postprocess_utils import rich_transcription_postprocess
+import re
 
 class SenseVoiceModel:
     def __init__(self, model_dir="iic/SenseVoiceSmall", device=None):
@@ -55,9 +56,82 @@ class ParaformerModel:
         if not os.path.exists(audio_file_path):
             raise FileNotFoundError(f"音频文件不存在: {audio_file_path}")
         generate_kwargs = {"input": audio_file_path, "batch_size_s": batch_size_s}
-        if hotword:
-            generate_kwargs["hotword"] = hotword
+        generate_kwargs['hotword'] = hotword
         generate_kwargs.update(kwargs)
+        print("generate_kwargs: ", generate_kwargs)
         res = self.model.generate(**generate_kwargs)
         text = rich_transcription_postprocess(res[0]["text"])
         return text
+
+
+def test_hotword_functionality(audio_file_path, hotword_str=None):
+    """
+    测试热词功能的本地验证函数
+    
+    Args:
+        audio_file_path (str): 音频文件路径
+        hotword_str (str, optional): 热词字符串，用逗号分隔
+    
+    Returns:
+        dict: 包含转写结果和统计信息的字典
+    """
+    import time
+    
+    print(f"=== 热词功能测试 ===")
+    print(f"音频文件: {audio_file_path}")
+    print(f"热词: {hotword_str if hotword_str else '无'}")
+    print("-" * 50)
+    
+    try:
+        # 初始化模型
+        print("正在加载模型...")
+        model = ParaformerModel()
+        print(f"模型加载完成，设备: {model.device}")
+        
+        # 执行转写
+        print("开始转写...")
+        start_time = time.time()
+        
+        transcribed_text = model.transcribe(audio_file_path, hotword=hotword_str)
+        
+        end_time = time.time()
+        processing_time = end_time - start_time
+        
+        # 统计信息
+        result = {
+            'audio_file': audio_file_path,
+            'hotword': hotword_str,
+            'transcribed_text': transcribed_text,
+            'processing_time': processing_time,
+            'text_length': len(transcribed_text),
+            'success': True
+        }
+        
+        print(f"转写完成！")
+        print(f"处理时间: {processing_time:.2f}秒")
+        print(f"文本长度: {len(transcribed_text)}字符")
+        print(f"转写结果: {transcribed_text}")
+        
+        return result
+        
+    except Exception as e:
+        print(f"转写失败: {str(e)}")
+        return {
+            'audio_file': audio_file_path,
+            'hotword': hotword_str,
+            'error': str(e),
+            'success': False
+        }
+
+
+if __name__ == "__main__":
+    
+    # 执行测试
+    audio_path = "/home/frank/codes/audio_anything/audio_text_fun/assets/vad_example.wav"
+    hotword = "是错 试验"
+    result = test_hotword_functionality(audio_path, hotword)
+    
+    if result['success']:
+        print("\n✅ 测试成功！")
+    else:
+        print("\n❌ 测试失败！")
